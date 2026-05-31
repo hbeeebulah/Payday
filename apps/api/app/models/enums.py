@@ -33,6 +33,14 @@ class DistributionState(str, enum.Enum):
 
     PENDING = "pending"        # queued, not yet sent
     PROCESSING = "processing"  # submitted to ALATPay, awaiting result
-    SUCCESSFUL = "successful"  # funds delivered to the employee
+    SUCCESSFUL = "successful"  # funds delivered to the employee ("paid")
     FAILED = "failed"          # transfer rejected/failed
     REVERSED = "reversed"      # transfer reversed after the fact
+
+
+class WalletStatus(str, enum.Enum):
+    """Provisioning state of a business's dedicated Payroll Wallet."""
+
+    PENDING = "pending"        # creation initiated, awaiting activation/OTP
+    ACTIVE = "active"          # provisioned and usable
+    FAILED = "failed"          # provisioning failed

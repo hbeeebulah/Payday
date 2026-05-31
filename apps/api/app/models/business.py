@@ -12,6 +12,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.employee import Employee
     from app.models.payroll_run import PayrollRun
+    from app.models.payroll_wallet import PayrollWallet
 
 
 class Business(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -46,6 +47,11 @@ class Business(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     payroll_runs: Mapped[list[PayrollRun]] = relationship(
         back_populates="business",
+        cascade="all, delete-orphan",
+    )
+    payroll_wallet: Mapped[PayrollWallet | None] = relationship(
+        back_populates="business",
+        uselist=False,
         cascade="all, delete-orphan",
     )
 

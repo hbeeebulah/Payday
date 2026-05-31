@@ -10,16 +10,20 @@ from app.models.enums import (
     DistributionState,
     EmployeeStatus,
     PayrollRunStatus,
+    WalletStatus,
 )
 from app.models.payroll_run import PayrollRun
+from app.models.payroll_wallet import PayrollWallet
 from app.models.transaction_receipt import TransactionReceipt
 
 __all__ = [
     "Business",
     "Employee",
     "PayrollRun",
+    "PayrollWallet",
     "TransactionReceipt",
     "DistributionState",
     "EmployeeStatus",
     "PayrollRunStatus",
+    "WalletStatus",
 ]
