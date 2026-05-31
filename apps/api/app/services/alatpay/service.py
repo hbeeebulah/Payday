@@ -1,8 +1,13 @@
-"""High-level ALATPay service.
+"""High-level ALATPay disbursement & webhook service.
 
-Exposes payroll-oriented operations (disburse a batch of salaries, verify and
-parse webhooks, reconcile a transaction) on top of :class:`AlatPayClient`.
-Everything the rest of the app needs from ALATPay goes through here.
+Exposes payroll-oriented operations on top of :class:`AlatPayClient`:
+
+* ``pay_with_bank_transfer`` / ``pay_with_bank_details`` — the two payout rails.
+* ``disburse_one`` — routes a payout to the correct rail (Wema accounts use the
+  direct-debit "Pay with Bank Details" flow).
+* ``disburse_batch`` — fans out many payouts in parallel.
+* ``verify_signature`` / ``parse_webhook`` — inbound webhook ingestion.
+* ``get_transaction_status`` — server-side re-verification of a transaction.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ import asyncio
 import hashlib
 import hmac
 from collections.abc import Iterable
+from decimal import Decimal
 
 import httpx
 
@@ -35,60 +41,119 @@ _STATE_MAP: dict[str, DistributionState] = {
     "success": DistributionState.SUCCESSFUL,
     "successful": DistributionState.SUCCESSFUL,
     "completed": DistributionState.SUCCESSFUL,
+    "paid": DistributionState.SUCCESSFUL,
+    "true": DistributionState.SUCCESSFUL,
     "failed": DistributionState.FAILED,
     "declined": DistributionState.FAILED,
+    "false": DistributionState.FAILED,
     "reversed": DistributionState.REVERSED,
 }
 
 
-def _map_state(raw_state: str | None) -> DistributionState:
-    if not raw_state:
+def _map_state(raw_state: object) -> DistributionState:
+    if raw_state is None:
         return DistributionState.PENDING
-    return _STATE_MAP.get(raw_state.strip().lower(), DistributionState.PROCESSING)
+    if isinstance(raw_state, bool):
+        return DistributionState.SUCCESSFUL if raw_state else DistributionState.FAILED
+    return _STATE_MAP.get(str(raw_state).strip().lower(), DistributionState.PROCESSING)
+
+
+def _to_decimal(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (ValueError, ArithmeticError):
+        return None
 
 
 class AlatPayService:
-    """Domain-facing ALATPay operations for the payroll workflow."""
+    """Domain-facing ALATPay payout + webhook operations."""
 
-    def __init__(self, client: AlatPayClient, *, webhook_secret: str = "") -> None:
+    def __init__(
+        self,
+        client: AlatPayClient,
+        *,
+        webhook_secret: str = "",
+        wema_bank_code: str = "035",
+    ) -> None:
         self._client = client
         self._webhook_secret = webhook_secret
+        self._wema_bank_code = wema_bank_code
 
-    # --- Disbursement ------------------------------------------------------
+    # --- Payout rails ------------------------------------------------------
 
-    async def disburse_one(self, request: DisbursementRequest) -> DisbursementResult:
-        """Push a single salary payout to ALATPay.
-
-        Any transport or provider error is contained here and surfaced as a
-        FAILED result so a single bad payout never aborts the whole batch.
-        """
+    async def pay_with_bank_transfer(
+        self, request: DisbursementRequest
+    ) -> DisbursementResult:
+        """Pay a worker via the Pay with Bank Transfer rail."""
         payload = {
-            "reference": request.reference,
             "amount": str(request.amount),
             "currency": request.currency,
+            "orderId": request.reference,
+            "description": request.narration or "Salary payment via Payday",
             "accountNumber": request.account_number,
             "bankCode": request.bank_code,
-            "accountName": request.account_name,
-            "narration": request.narration or "Salary payment via Payday",
-            "metadata": request.metadata,
+            "customer": request.customer.to_payload(),
         }
         try:
-            raw = await self._client.create_transfer(payload)
-        except (AlatPayError, httpx.HTTPError):
-            return DisbursementResult(
-                reference=request.reference,
-                provider_reference=None,
-                state=DistributionState.FAILED,
-                raw={},
-            )
+            raw = await self._client.pay_with_bank_transfer(payload)
+        except (AlatPayError, httpx.HTTPError) as exc:
+            return _failed(request, channel="bank_transfer", message=str(exc))
 
         data = raw.get("data", raw) if isinstance(raw, dict) else {}
         return DisbursementResult(
             reference=request.reference,
-            provider_reference=data.get("transactionId") or data.get("reference"),
+            provider_reference=data.get("transactionId") or data.get("id"),
             state=_map_state(data.get("status")),
+            channel="bank_transfer",
+            message=data.get("statusReason") or data.get("message"),
             raw=raw if isinstance(raw, dict) else {},
         )
+
+    async def pay_with_bank_details(
+        self, request: DisbursementRequest
+    ) -> DisbursementResult:
+        """Pay a Wema-account worker via the Pay with Bank Details direct-debit rail.
+
+        This initiates the OTP-gated authorization; the transfer reaches a
+        terminal state asynchronously and is reconciled via webhook.
+        """
+        payload = {
+            "amount": str(request.amount),
+            "currency": request.currency,
+            "orderId": request.reference,
+            "description": request.narration or "Salary payment via Payday",
+            "channel": "3",
+            "accountNumber": request.account_number,
+            "bankCode": request.bank_code,
+            "customer": request.customer.to_payload(),
+        }
+        try:
+            raw = await self._client.bank_details_send_otp(payload)
+        except (AlatPayError, httpx.HTTPError) as exc:
+            return _failed(request, channel="bank_details", message=str(exc))
+
+        data = raw.get("data", raw) if isinstance(raw, dict) else {}
+        return DisbursementResult(
+            reference=request.reference,
+            provider_reference=data.get("transactionId") or data.get("id"),
+            # The payout is authorized and in flight until the webhook confirms.
+            state=DistributionState.PROCESSING,
+            channel="bank_details",
+            message=data.get("message"),
+            raw=raw if isinstance(raw, dict) else {},
+        )
+
+    async def disburse_one(self, request: DisbursementRequest) -> DisbursementResult:
+        """Route a single payout to the correct rail.
+
+        Wema Bank accounts (bank code ``035``) are paid via direct debit;
+        everyone else goes through Pay with Bank Transfer.
+        """
+        if request.bank_code == self._wema_bank_code:
+            return await self.pay_with_bank_details(request)
+        return await self.pay_with_bank_transfer(request)
 
     async def disburse_batch(
         self,
@@ -96,11 +161,7 @@ class AlatPayService:
         *,
         concurrency: int = 10,
     ) -> list[DisbursementResult]:
-        """Disburse many salaries concurrently.
-
-        Transfers are fired in parallel (bounded by ``concurrency``) so a full
-        payroll run for an entire company executes quickly rather than serially.
-        """
+        """Disburse many salaries concurrently (bounded by ``concurrency``)."""
         semaphore = asyncio.Semaphore(concurrency)
 
         async def _run(req: DisbursementRequest) -> DisbursementResult:
@@ -109,9 +170,9 @@ class AlatPayService:
 
         return await asyncio.gather(*(_run(req) for req in requests))
 
-    async def get_status(self, provider_reference: str) -> DistributionState:
+    async def get_transaction_status(self, provider_reference: str) -> DistributionState:
         """Reconcile a transaction by polling ALATPay for its current status."""
-        raw = await self._client.get_transaction_status(provider_reference)
+        raw = await self._client.get_transaction(provider_reference)
         data = raw.get("data", raw) if isinstance(raw, dict) else {}
         return _map_state(data.get("status"))
 
@@ -120,8 +181,10 @@ class AlatPayService:
     def verify_signature(self, payload: bytes, signature: str | None) -> bool:
         """Verify an inbound webhook's HMAC-SHA256 signature.
 
-        If no webhook secret is configured the check is skipped (useful for
-        local development) but this should always be set in production.
+        ALATPay does not document a signing header, so when no secret is
+        configured the check is skipped. When a secret *is* configured we
+        enforce an HMAC-SHA256 over the raw body, and callers are expected to
+        additionally re-verify via :meth:`get_transaction_status`.
         """
         if not self._webhook_secret:
             return True
@@ -142,11 +205,27 @@ class AlatPayService:
         data = body.get("data", body) if isinstance(body, dict) else {}
         return WebhookEvent(
             event_type=str(body.get("event") or body.get("type") or "transaction.update"),
-            provider_reference=data.get("transactionId") or data.get("reference"),
-            client_reference=data.get("clientReference") or data.get("merchantReference"),
+            provider_reference=data.get("transactionId") or data.get("id"),
+            client_reference=data.get("orderId")
+            or data.get("clientReference")
+            or data.get("merchantReference"),
             state=_map_state(data.get("status")),
+            amount=_to_decimal(data.get("amount")),
             raw=body if isinstance(body, dict) else {},
         )
+
+
+def _failed(
+    request: DisbursementRequest, *, channel: str, message: str | None
+) -> DisbursementResult:
+    return DisbursementResult(
+        reference=request.reference,
+        provider_reference=None,
+        state=DistributionState.FAILED,
+        channel=channel,
+        message=message,
+        raw={},
+    )
 
 
 def build_alatpay_service(settings: Settings | None = None) -> AlatPayService:
@@ -155,10 +234,15 @@ def build_alatpay_service(settings: Settings | None = None) -> AlatPayService:
     client = AlatPayClient(
         base_url=settings.alatpay_base_url,
         api_key=settings.alatpay_api_key,
+        public_key=settings.alatpay_public_key,
         business_id=settings.alatpay_business_id,
         timeout=settings.alatpay_timeout_seconds,
     )
-    return AlatPayService(client, webhook_secret=settings.alatpay_webhook_secret)
+    return AlatPayService(
+        client,
+        webhook_secret=settings.alatpay_webhook_secret,
+        wema_bank_code=settings.wema_bank_code,
+    )
 
 
 def get_alatpay_service() -> AlatPayService:
