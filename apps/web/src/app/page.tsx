@@ -34,16 +34,22 @@ export default function LandingPage() {
           automatic payslips and a clean digital record of every salary ever
           paid. Powered by ALATPay.
         </p>
-        <div className="mt-8 flex items-center justify-center gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/dashboard"
+            href="/onboarding"
             className="rounded-lg bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
           >
-            Employer dashboard
+            Set up in 10 minutes
+          </Link>
+          <Link
+            href="/dashboard"
+            className="rounded-lg border border-ink-200 bg-white px-5 py-3 text-sm font-semibold text-ink-700 hover:bg-ink-100"
+          >
+            One-Tap dashboard
           </Link>
           <Link
             href="/portal"
-            className="rounded-lg border border-ink-200 bg-white px-5 py-3 text-sm font-semibold text-ink-700 hover:bg-ink-100"
+            className="rounded-lg px-5 py-3 text-sm font-semibold text-ink-600 hover:text-ink-900"
           >
             Staff portal
           </Link>
@@ -58,11 +64,11 @@ export default function LandingPage() {
           },
           {
             title: "Automatic payslips",
-            body: "Each payout produces a permanent receipt your staff can view anytime.",
+            body: "Each payout pushes a WhatsApp/SMS payslip with its unique reference.",
           },
           {
-            title: "Clean records",
-            body: "Every salary ever paid is logged with its exact ALATPay reference and state.",
+            title: "Verified earnings",
+            body: "Staff keep an auditable record to unlock loans and tenancy applications.",
           },
         ].map((f) => (
           <div
