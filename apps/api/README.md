@@ -9,21 +9,65 @@ per-request `AsyncSession`s, parallel disbursement, and async webhook ingestion.
 ```
 app/
 ├── main.py                 # FastAPI app factory + middleware
-├── core/config.py          # environment-driven settings
+├── core/config.py          # environment-driven settings (incl. ALATPay creds)
 ├── db/                     # async engine, session, declarative base
 ├── models/                 # SQLAlchemy ORM models (the relational schema)
 │   ├── business.py             # Business — company metadata
 │   ├── employee.py             # Employee — personal/role/salary/bank details
+│   ├── payroll_wallet.py       # PayrollWallet — per-business ALATPay static wallet
 │   ├── payroll_run.py          # PayrollRun — batch execution + funding totals
 │   └── transaction_receipt.py  # TransactionReceipt — per-employee payout log
 ├── schemas/                # Pydantic request/response models
-├── routes/                 # HTTP routes (businesses, employees, payroll, webhooks)
+├── routes/                 # HTTP routes
+│   ├── businesses.py / employees.py
+│   ├── wallets.py              # provision + balance for the Payroll Wallet
+│   ├── payroll.py              # create + (background) execute payroll runs
+│   ├── analytics.py            # monthly payroll analytics + settlements
+│   └── webhooks.py             # ALATPay Transaction Monitoring ingestion
 └── services/
-    ├── payroll.py          # payroll orchestration
+    ├── wallet.py           # Payroll Wallet orchestration + overdraft guard
+    ├── payroll.py          # payroll orchestration + background disbursement
+    ├── analytics.py        # monthly analytics from the local ledger
     └── alatpay/            # ISOLATED ALATPay integration (the only caller)
+        ├── client.py           # async transport; header + businessId injection
+        ├── service.py          # disbursement rails + webhook parsing
+        ├── wallets.py          # Static Wallets API (provision / balance)
+        ├── settlements.py      # Settlements API wrapper
+        ├── models.py           # typed request/result contracts
+        └── exceptions.py
 alembic/                    # database migrations
-tests/                      # pytest suite (ASGI integration + unit)
+tests/                      # pytest suite (ASGI integration + unit) with fakes
 ```
+
+## ALATPay engine
+
+All provider communication is confined to `app/services/alatpay/`. The transport
+client injects credentials securely on every call — the subscription key as the
+`Ocp-Apim-Subscription-Key` header and the merchant `businessId` into the body /
+query string.
+
+- **Static Wallets** (`wallets.py`) — provisions a dedicated **Payroll Wallet**
+  (a static ALATPay account) per business and reads its balance. The balance is
+  cached on `PayrollWallet.available_balance` and re-checked before every run as
+  an **overdraft guard** (`services/wallet.py`).
+- **Disbursement** (`service.py`) — pays each worker on the correct rail:
+  - **Pay with Bank Transfer** for general accounts;
+  - **Pay with Bank Details** (Wema direct debit, bank code `035`) for Wema
+    accounts — selected by an explicit branch in `disburse_one`.
+  - `disburse_batch` fans out the payouts **in parallel** (bounded concurrency).
+- **Background execution** — `POST /payroll-runs/{id}/execute` runs the overdraft
+  check synchronously, then hands the parallel ALATPay calls to a FastAPI
+  `BackgroundTasks` worker (`run_payroll_disbursement_task`).
+- **Webhooks** (`routes/webhooks.py`) — `POST /webhooks/alatpay` ingests
+  Transaction Monitoring callbacks, re-verifies the status server-side, locates
+  the matching `TransactionReceipt` and flips it from pending to **paid**.
+- **Settlements & analytics** (`settlements.py`, `services/analytics.py`) — wraps
+  the Settlements API and computes monthly payroll spend for owner visibility.
+
+> Note: ALATPay does not document a webhook signing scheme, so the webhook body
+> is not trusted on its own — the handler re-confirms each transaction via the
+> Transactions API. An optional `ALATPAY_WEBHOOK_SECRET` enables HMAC checking if
+> you front the endpoint with your own signer.
 
 ## Quick start
 
@@ -32,36 +76,26 @@ cd apps/api
 pip install -r requirements-dev.txt        # or requirements.txt for prod
 cp .env.example .env                        # then fill in ALATPay credentials
 
-# Run migrations (defaults to local async SQLite if DATABASE_URL is unset)
-alembic upgrade head
-
-# Start the dev server
+alembic upgrade head                        # local default: async SQLite
 uvicorn app.main:app --reload --port 8000
 ```
 
 Interactive API docs are served at `http://localhost:8000/docs`.
 
-## Database
+## Key endpoints
 
-- ORM: **SQLAlchemy 2.0** (async, typed `Mapped[...]` columns).
-- Production: PostgreSQL via `asyncpg`. Local/dev/test: async SQLite via `aiosqlite`.
-- Migrations: **Alembic** (async `env.py`, URL injected from app settings).
-
-## ALATPay integration
-
-All provider communication is confined to `app/services/alatpay/`:
-
-- `client.py` — thin async HTTP transport.
-- `service.py` — `AlatPayService`: batch disbursement (parallel, bounded
-  concurrency), status reconciliation, and HMAC webhook verification.
-- `models.py` / `exceptions.py` — typed contracts and error hierarchy.
-
-The rest of the app only depends on `AlatPayService`, so the provider can be
-mocked or swapped without touching business logic.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/businesses/{id}/wallet` | Provision the Payroll Wallet |
+| GET | `/businesses/{id}/wallet?refresh=true` | Wallet details + live balance |
+| POST | `/businesses/{id}/payroll-runs` | Create a run (one receipt per employee) |
+| POST | `/businesses/{id}/payroll-runs/{run}/execute` | Overdraft check + background disburse |
+| POST | `/webhooks/alatpay` | Transaction Monitoring callback ingestion |
+| GET | `/businesses/{id}/analytics/payroll` | Monthly analytics + settlements |
 
 ## Tests & lint
 
 ```bash
-pytest            # ASGI integration + ALATPay unit tests
+pytest            # ASGI integration + unit tests (ALATPay stubbed via fakes)
 ruff check .      # lint
 ```
