@@ -1,9 +1,15 @@
+"use client";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { demoEmployees } from "@/lib/demo-data";
 import { formatNaira, initials } from "@/lib/format";
+import { useStore } from "@/lib/store";
 
 export default function EmployeesPage() {
+  const { workers } = useStore();
+
   return (
     <div className="space-y-6">
       <header className="flex items-end justify-between">
@@ -15,9 +21,9 @@ export default function EmployeesPage() {
             Manage staff, roles and salary levels.
           </p>
         </div>
-        <button className="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
-          Add employee
-        </button>
+        <Link href="/onboarding">
+          <Button>Add employees</Button>
+        </Link>
       </header>
 
       <Card>
@@ -28,20 +34,20 @@ export default function EmployeesPage() {
               <th className="px-5 py-3 font-medium">Role</th>
               <th className="px-5 py-3 font-medium">Bank</th>
               <th className="px-5 py-3 text-right font-medium">Salary</th>
-              <th className="px-5 py-3 text-right font-medium">Status</th>
+              <th className="px-5 py-3 text-right font-medium">Last payout</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
-            {demoEmployees.map((emp) => (
+            {workers.map((emp) => (
               <tr key={emp.id} className="hover:bg-ink-50">
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
-                      {initials(emp.first_name, emp.last_name)}
+                      {initials(emp.firstName, emp.lastName)}
                     </div>
                     <div>
                       <p className="font-medium text-ink-900">
-                        {emp.first_name} {emp.last_name}
+                        {emp.firstName} {emp.lastName}
                       </p>
                       <p className="text-xs text-ink-400">{emp.email}</p>
                     </div>
@@ -49,12 +55,12 @@ export default function EmployeesPage() {
                 </td>
                 <td className="px-5 py-3 text-ink-600">{emp.role}</td>
                 <td className="px-5 py-3 text-ink-600">
-                  <p>{emp.bank_name}</p>
+                  <p>{emp.bankName}</p>
                   <p className="text-xs text-ink-400">
-                    •••• {emp.bank_account_number.slice(-4)}
+                    •••• {emp.accountNumber.slice(-4)}
                   </p>
                 </td>
-                <td className="px-5 py-3 text-right font-medium text-ink-900">
+                <td className="px-5 py-3 text-right font-medium tabular-nums text-ink-900">
                   {formatNaira(emp.salary)}
                 </td>
                 <td className="px-5 py-3 text-right">
@@ -62,6 +68,13 @@ export default function EmployeesPage() {
                 </td>
               </tr>
             ))}
+            {workers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-5 py-10 text-center text-sm text-ink-400">
+                  No employees yet.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </Card>

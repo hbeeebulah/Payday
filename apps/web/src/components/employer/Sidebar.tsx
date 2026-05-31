@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { useStore } from "@/lib/store";
 
 const NAV = [
-  { href: "/dashboard", label: "Overview", icon: "▦" },
+  { href: "/dashboard", label: "Run Payroll", icon: "₦" },
   { href: "/dashboard/employees", label: "Employees", icon: "☷" },
-  { href: "/dashboard/payroll", label: "Payroll runs", icon: "₦" },
+  { href: "/dashboard/payroll", label: "History", icon: "▦" },
+  { href: "/onboarding", label: "Setup wizard", icon: "✦" },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { business } = useStore();
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-ink-200 bg-white">
@@ -43,11 +46,11 @@ export function Sidebar() {
       <div className="border-t border-ink-200 p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-200 text-sm font-semibold text-ink-700">
-            JK
+            {(business.name || "P").charAt(0)}
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-ink-900">
-              Jollof &amp; Co.
+              {business.name || "Payday"}
             </p>
             <p className="truncate text-xs text-ink-400">Employer account</p>
           </div>
