@@ -1,35 +1,41 @@
+"use client";
+
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { demoEmployees, demoReceipts } from "@/lib/demo-data";
 import { formatNaira, formatDate } from "@/lib/format";
+import { useStore } from "@/lib/store";
 
 export default function StaffHome() {
-  // The signed-in staff member (demo: first employee).
-  const me = demoEmployees[0];
-  const myReceipts = demoReceipts.filter((r) => r.employee_id === me.id);
-  const latest = myReceipts[0];
+  const { workers, payslips, currentStaffId, business } = useStore();
+  const me = workers.find((w) => w.id === currentStaffId);
+  if (!me) return null;
+
+  const myPayslips = payslips.filter((p) => p.employeeId === me.id);
+  const latest = myPayslips[0];
 
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-sm text-ink-500">Good morning,</p>
+        <p className="text-sm text-ink-500">Welcome back,</p>
         <h1 className="text-xl font-semibold tracking-tight text-ink-900">
-          {me.first_name} {me.last_name}
+          {me.firstName} {me.lastName}
         </h1>
         <p className="text-sm text-ink-400">
-          {me.role} · {me.department}
+          {me.role} · {business.name}
         </p>
       </header>
 
       <Card className="bg-brand-600 p-5 text-white">
-        <p className="text-sm text-brand-100">Monthly net salary</p>
-        <p className="mt-1 text-3xl font-semibold tracking-tight">
+        <p className="text-sm text-brand-100">Monthly salary</p>
+        <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
           {formatNaira(me.salary)}
         </p>
         <div className="mt-4 flex items-center justify-between text-sm text-brand-100">
-          <span>Next payday</span>
-          <span className="font-medium text-white">28 Jun 2026</span>
+          <span>Paid to</span>
+          <span className="font-medium text-white">
+            {me.bankName} ••••{me.accountNumber.slice(-4)}
+          </span>
         </div>
       </Card>
 
@@ -37,25 +43,28 @@ export default function StaffHome() {
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-ink-900">Latest payslip</p>
-            <StatusBadge status={latest.distribution_state} />
+            <StatusBadge status="paid" />
           </div>
           <div className="mt-3 space-y-2 text-sm">
-            <Row label="Amount" value={formatNaira(latest.amount)} />
-            <Row label="Paid on" value={formatDate(latest.processed_at)} />
-            <Row
-              label="Reference"
-              value={latest.alatpay_transaction_reference ?? "—"}
-              mono
-            />
+            <Row label="Period" value={latest.period} />
+            <Row label="Amount" value={formatNaira(latest.net)} />
+            <Row label="Paid on" value={formatDate(latest.paidAt)} />
+            <Row label="Reference" value={latest.reference} mono />
           </div>
           <Link
-            href="/portal/payslips"
-            className="mt-4 block rounded-lg border border-ink-200 py-2.5 text-center text-sm font-medium text-ink-700 hover:bg-ink-100"
+            href={`/portal/payslips/${latest.id}`}
+            className="mt-4 block rounded-lg bg-brand-600 py-2.5 text-center text-sm font-semibold text-white hover:bg-brand-700"
           >
-            View all payslips
+            View &amp; download payslip
           </Link>
         </Card>
-      ) : null}
+      ) : (
+        <Card className="p-6 text-center">
+          <p className="text-sm text-ink-500">
+            No payslips yet. They appear here the moment you&apos;re paid.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
@@ -72,9 +81,7 @@ function Row({
   return (
     <div className="flex items-center justify-between">
       <span className="text-ink-400">{label}</span>
-      <span
-        className={`font-medium text-ink-900 ${mono ? "font-mono text-xs" : ""}`}
-      >
+      <span className={`font-medium text-ink-900 ${mono ? "font-mono text-xs" : ""}`}>
         {value}
       </span>
     </div>
