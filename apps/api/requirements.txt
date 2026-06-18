@@ -17,5 +17,8 @@ greenlet==3.1.1
 # HTTP client (ALATPay integration)
 httpx==0.28.1
 
+# Cryptography (Wema Merchant Payout AES/CBC payload encryption)
+cryptography==44.0.0
+
 # Utilities
 python-dotenv==1.0.1
