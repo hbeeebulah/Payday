@@ -1,1 +1,57 @@
-node_modules
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Production
+*.tsbuildinfo
+next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables
+# Per the Next.js convention, shared NON-secret env defaults may be committed:
+#   .env, .env.development, .env.production
+# Only local/personal overrides are ignored:
+.env*.local
+# The FastAPI backend stores real secrets (DB creds, ALATPay/payout keys) in its
+# env files, so those are always ignored — apps/api/.env.example documents them.
+/apps/api/.env
+/apps/api/.env.*
+!/apps/api/.env.example
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+coverage/
