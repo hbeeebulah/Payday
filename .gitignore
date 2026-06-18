@@ -28,10 +28,15 @@ env/
 .ruff_cache/
 
 # Environment variables
-.env
+# Per the Next.js convention, shared NON-secret env defaults may be committed:
+#   .env, .env.development, .env.production
+# Only local/personal overrides are ignored:
 .env*.local
-.env.development
-.env.production
+# The FastAPI backend stores real secrets (DB creds, ALATPay/payout keys) in its
+# env files, so those are always ignored — apps/api/.env.example documents them.
+/apps/api/.env
+/apps/api/.env.*
+!/apps/api/.env.example
 
 # Databases
 *.db
