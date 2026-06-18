@@ -1,9 +1,9 @@
 """Payroll orchestration.
 
-Coordinates the database (PayrollRun + TransactionReceipt) with the isolated
-ALATPay service to execute a "pay everyone" run. Designed to run inside a
+Coordinates the database (PayrollRun + TransactionReceipt) with the active
+disbursement backend to execute a "pay everyone" run. Designed to run inside a
 FastAPI background task: disbursement is fanned out in parallel and each payout
-is routed to the correct ALATPay rail (Wema accounts via direct debit).
+is routed to the correct rail.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from app.models import (
     TransactionReceipt,
 )
 from app.services.alatpay import (
-    AlatPayService,
     CustomerInfo,
+    DisbursementBackend,
     DisbursementRequest,
-    build_alatpay_service,
+    build_disbursement_service,
 )
 
 logger = logging.getLogger("payday.payroll")
@@ -112,10 +112,10 @@ async def process_payroll_disbursement(
     db: AsyncSession,
     *,
     run: PayrollRun,
-    alatpay: AlatPayService,
+    alatpay: DisbursementBackend,
     concurrency: int = 10,
 ) -> PayrollRun:
-    """Disburse every pending payout in the run, in parallel, via ALATPay."""
+    """Disburse every pending payout in the run, in parallel, via the backend."""
     receipts = list(
         (
             await db.execute(
@@ -150,7 +150,7 @@ async def process_payroll_disbursement(
         receipt.alatpay_transaction_reference = result.provider_reference
         receipt.processed_at = datetime.now(UTC)
         if result.state == DistributionState.FAILED:
-            receipt.failure_reason = result.message or "ALATPay reported a failure"
+            receipt.failure_reason = result.message or "Disbursement reported a failure"
 
     await db.commit()
     await _recompute_run_status(db, run)
@@ -198,8 +198,8 @@ async def run_payroll_disbursement_task(run_id: str) -> None:
     """Background-task entrypoint.
 
     Opens its own database session (the request session is already closed by the
-    time a background task runs) and disburses the run. All errors are contained
-    so a failure never crashes the worker.
+    time a background task runs) and disburses the run via the configured
+    backend. All errors are contained so a failure never crashes the worker.
     """
     # Imported lazily to avoid binding the engine at import time / in tests.
     from app.db.session import AsyncSessionLocal
@@ -211,11 +211,11 @@ async def run_payroll_disbursement_task(run_id: str) -> None:
             if run is None:
                 logger.warning("Payroll run %s not found for disbursement", run_id)
                 return
-            alatpay = build_alatpay_service(settings)
+            disburser = build_disbursement_service(settings)
             await process_payroll_disbursement(
                 session,
                 run=run,
-                alatpay=alatpay,
+                alatpay=disburser,
                 concurrency=settings.alatpay_disbursement_concurrency,
             )
     except Exception:  # noqa: BLE001 - background tasks must not crash the worker
