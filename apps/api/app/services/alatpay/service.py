@@ -8,6 +8,9 @@ Exposes payroll-oriented operations on top of :class:`AlatPayClient`:
 * ``disburse_batch`` — fans out many payouts in parallel.
 * ``verify_signature`` / ``parse_webhook`` — inbound webhook ingestion.
 * ``get_transaction_status`` — server-side re-verification of a transaction.
+
+``build_disbursement_service`` selects the active disbursement backend: the
+ALATPay collection rails (default) or the real Wema Merchant Payout API.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import hashlib
 import hmac
 from collections.abc import Iterable
 from decimal import Decimal
+from typing import Protocol
 
 import httpx
 
@@ -65,6 +69,16 @@ def _to_decimal(value: object) -> Decimal | None:
         return Decimal(str(value))
     except (ValueError, ArithmeticError):
         return None
+
+
+class DisbursementBackend(Protocol):
+    """Structural type for anything that can disburse a batch of payouts."""
+
+    async def disburse_batch(
+        self, requests: Iterable[DisbursementRequest], *, concurrency: int = ...
+    ) -> list[DisbursementResult]: ...
+
+    async def get_transaction_status(self, provider_reference: str) -> DistributionState: ...
 
 
 class AlatPayService:
@@ -138,7 +152,6 @@ class AlatPayService:
         return DisbursementResult(
             reference=request.reference,
             provider_reference=data.get("transactionId") or data.get("id"),
-            # The payout is authorized and in flight until the webhook confirms.
             state=DistributionState.PROCESSING,
             channel="bank_details",
             message=data.get("message"),
@@ -243,6 +256,17 @@ def build_alatpay_service(settings: Settings | None = None) -> AlatPayService:
         webhook_secret=settings.alatpay_webhook_secret,
         wema_bank_code=settings.wema_bank_code,
     )
+
+
+def build_disbursement_service(settings: Settings | None = None) -> DisbursementBackend:
+    """Return the active disbursement backend (collection rails or real payout)."""
+    settings = settings or get_settings()
+    if settings.payout_enabled:
+        # Imported lazily to avoid a circular import at package load time.
+        from app.services.alatpay.payout import build_payout_disbursement_service
+
+        return build_payout_disbursement_service(settings)
+    return build_alatpay_service(settings)
 
 
 def get_alatpay_service() -> AlatPayService:
