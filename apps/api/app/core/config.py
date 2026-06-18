@@ -36,29 +36,40 @@ class Settings(BaseSettings):
     # external dependencies; production overrides this with a Postgres URL.
     database_url: str = "sqlite+aiosqlite:///./payday.db"
 
-    # --- ALATPay -----------------------------------------------------------
-    # Base URL of the ALATPay (Wema Bank) API gateway.
+    # --- ALATPay (collection / Transaction Monitoring) --------------------
     alatpay_base_url: str = "https://apibox.alatpay.ng"
-    # Subscription/secret key injected into the `Ocp-Apim-Subscription-Key`
-    # header on every outbound request (this is what authenticates the call).
     alatpay_api_key: str = ""
-    # Merchant public key (used by the checkout SDK and kept for completeness).
     alatpay_public_key: str = ""
-    # Merchant business identifier; ALATPay expects this in request bodies and
-    # query strings rather than as a header.
     alatpay_business_id: str = ""
-    # Secret used to verify the signature on inbound ALATPay webhooks.
     alatpay_webhook_secret: str = ""
-    # Outbound HTTP timeout (seconds).
     alatpay_timeout_seconds: float = 30.0
-    # Static wallet type used for the per-business Payroll Wallet:
-    #   1 = Individual (BVN + OTP verified), 2 = Collection wallet.
     alatpay_wallet_type: int = 2
-    # Bank code that identifies Wema Bank accounts; these are paid via the
-    # direct-debit "Pay with Bank Details" flow instead of bank transfer.
     wema_bank_code: str = "035"
-    # Bounded concurrency for parallel disbursement requests.
     alatpay_disbursement_concurrency: int = 10
+
+    # Which backend actually moves money for a payroll run:
+    #   "collection" -> the ALATPay collection rails (default; demo/sandbox)
+    #   "payout"     -> the real Wema Merchant Payout (NIP disbursement) API
+    disbursement_mode: str = "collection"
+
+    # --- Wema Merchant Payout (real NIP disbursement) ---------------------
+    # Production base: https://apps.wemabank.com/WemaAPIService/
+    payout_base_url: str = "https://apps.wemabank.com/WemaAPIService/"
+    payout_username: str = ""
+    payout_password: str = ""
+    # Vendor identifier supplied by the bank; sent as the `VendorId` header.
+    payout_vendor_id: str = ""
+    # Azure APIM subscription key (Ocp-Apim-Subscription-Key); optional.
+    payout_subscription_key: str = ""
+    # AES-128 key + IV (16 ASCII chars each) supplied by the bank. The values
+    # below are the public SANDBOX key/IV and MUST be overridden in production.
+    payout_encryption_key: str = ")KCSWITHC%^$$%@H"
+    payout_encryption_iv: str = "#$%#^%KCSWITC945"
+    # Merchant debit/source account profiled with Wema.
+    payout_source_account: str = ""
+    # Display name shown to beneficiaries as the originator.
+    payout_originator_name: str = "Payday"
+    payout_timeout_seconds: float = 30.0
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod
@@ -71,6 +82,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() in {"production", "prod"}
+
+    @property
+    def payout_enabled(self) -> bool:
+        return self.disbursement_mode.lower() == "payout"
 
 
 @lru_cache
