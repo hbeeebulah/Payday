@@ -1,0 +1,24 @@
+[project]
+name = "payday-api"
+version = "0.1.0"
+description = "Payday backend — FastAPI service for payroll orchestration and ALATPay disbursement."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests"]
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # FastAPI uses function calls (Depends/Query) in defaults
+
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402", "I001"]  # env must be set before app imports
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
