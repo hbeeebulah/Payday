@@ -1,8 +1,9 @@
 {
-  "/page": "app/page.js",
   "/login/page": "app/login/page.js",
-  "/(employer)/dashboard/page": "app/(employer)/dashboard/page.js",
   "/(staff)/portal/login/page": "app/(staff)/portal/login/page.js",
-  "/(staff)/portal/page": "app/(staff)/portal/page.js",
-  "/(staff)/portal/payslips/[id]/page": "app/(staff)/portal/payslips/[id]/page.js"
+  "/(employer)/dashboard/page": "app/(employer)/dashboard/page.js",
+  "/(staff)/portal/profile/page": "app/(staff)/portal/profile/page.js",
+  "/(staff)/portal/payslips/page": "app/(staff)/portal/payslips/page.js",
+  "/(staff)/portal/payslips/[id]/page": "app/(staff)/portal/payslips/[id]/page.js",
+  "/(staff)/portal/page": "app/(staff)/portal/page.js"
 }

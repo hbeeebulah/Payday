@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatNaira, formatDate } from "@/lib/format";
 import type { Payslip } from "@/lib/models";
+import { downloadPayslipPdf } from "@/lib/payslip-pdf";
 import { useStore } from "@/lib/store";
 
 export default function PayslipDetailPage() {
@@ -14,6 +16,8 @@ export default function PayslipDetailPage() {
   const payslip = payslips.find(
     (p) => p.id === params.id && p.employeeId === currentStaffId,
   );
+  const [downloading, setDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   if (!payslip) {
     return (
@@ -29,16 +33,31 @@ export default function PayslipDetailPage() {
     );
   }
 
-  function download() {
-    if (!payslip) return;
-    const text = renderPayslipText(payslip);
+  const slip = payslip;
+
+  function downloadTxt() {
+    const text = renderPayslipText(slip);
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `payslip-${payslip.period.replace(/\s+/g, "-")}-${payslip.reference}.txt`;
+    link.download = `payslip-${slip.period.replace(/\s+/g, "-")}-${slip.reference}.txt`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function downloadPdf() {
+    setPdfError(null);
+    setDownloading(true);
+    try {
+      downloadPayslipPdf(slip);
+    } catch (err) {
+      setPdfError(
+        err instanceof Error ? err.message : "Could not generate PDF. Please try again.",
+      );
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
@@ -52,30 +71,37 @@ export default function PayslipDetailPage() {
 
       <Card className="overflow-hidden">
         <div className="bg-brand-600 px-5 py-5 text-white">
-          <p className="text-sm text-brand-100">{payslip.businessName}</p>
-          <h1 className="text-lg font-semibold">Payslip · {payslip.period}</h1>
+          <p className="text-sm text-brand-100">{slip.businessName}</p>
+          <h1 className="text-lg font-semibold">Payslip · {slip.period}</h1>
         </div>
         <div className="space-y-3 px-5 py-5 text-sm">
-          <Line label="Employee" value={payslip.employeeName} />
-          <Line label="Role" value={payslip.role} />
-          <Line label="Paid on" value={formatDate(payslip.paidAt)} />
-          <Line label="Account" value={`${payslip.bankName} ${payslip.accountMasked}`} />
+          <Line label="Employee" value={slip.employeeName} />
+          <Line label="Role" value={slip.role} />
+          <Line label="Paid on" value={formatDate(slip.paidAt)} />
+          <Line label="Account" value={`${slip.bankName} ${slip.accountMasked}`} />
           <div className="my-2 border-t border-ink-100" />
-          <Line label="Gross pay" value={formatNaira(payslip.gross)} />
-          <Line label="Deductions" value={formatNaira(payslip.deductions)} />
+          <Line label="Gross pay" value={formatNaira(slip.gross)} />
+          <Line label="Deductions" value={formatNaira(slip.deductions)} />
           <div className="flex items-center justify-between pt-1">
             <span className="font-semibold text-ink-900">Net paid</span>
             <span className="text-lg font-semibold tabular-nums text-ink-900">
-              {formatNaira(payslip.net)}
+              {formatNaira(slip.net)}
             </span>
           </div>
           <div className="my-2 border-t border-ink-100" />
-          <Line label="ALATPay reference" value={payslip.reference} mono />
+          <Line label="ALATPay reference" value={slip.reference} mono />
         </div>
       </Card>
 
-      <Button className="w-full" size="lg" onClick={download}>
-        Download payslip
+      {pdfError ? (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{pdfError}</p>
+      ) : null}
+
+      <Button className="w-full" size="lg" onClick={downloadPdf} disabled={downloading}>
+        {downloading ? "Preparing PDF…" : "Download PDF"}
+      </Button>
+      <Button className="w-full" variant="secondary" onClick={downloadTxt}>
+        Download TXT
       </Button>
       <p className="text-center text-xs text-ink-400">
         Keep this as proof of income for loans and tenancy applications.
