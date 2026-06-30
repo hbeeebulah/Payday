@@ -1,6 +1,8 @@
 {
-  "/login/page": "app/login/page.js",
   "/page": "app/page.js",
-  "/(employer)/onboarding/page": "app/(employer)/onboarding/page.js",
-  "/(employer)/dashboard/page": "app/(employer)/dashboard/page.js"
+  "/login/page": "app/login/page.js",
+  "/(employer)/dashboard/page": "app/(employer)/dashboard/page.js",
+  "/(staff)/portal/login/page": "app/(staff)/portal/login/page.js",
+  "/(staff)/portal/page": "app/(staff)/portal/page.js",
+  "/(staff)/portal/payslips/[id]/page": "app/(staff)/portal/payslips/[id]/page.js"
 }
