@@ -3,23 +3,31 @@
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { logoutUser, useAuth } from "@/lib/auth";
 import { formatNaira, initials } from "@/lib/format";
 import { logoutStaff, useStore } from "@/lib/store";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const auth = useAuth();
   const { workers, payslips, currentStaffId, business } = useStore();
   const me = workers.find((w) => w.id === currentStaffId);
-  if (!me) return null;
+  const authUser = auth?.user.role === "staff" ? auth.user : null;
 
-  const mine = payslips.filter((p) => p.employeeId === me.id);
+  if (!me && !authUser) return null;
+
+  const displayFirst = me?.firstName ?? authUser!.firstName;
+  const displayLast = me?.lastName ?? authUser!.lastName;
+  const displayRole = me?.role ?? "Staff member";
+  const employeeId = me?.id ?? authUser!.id;
+
+  const mine = payslips.filter((p) => p.employeeId === employeeId);
   const totalEarned = mine.reduce((sum, p) => sum + p.net, 0);
 
   function downloadStatement() {
-    if (!me) return;
     const lines = [
       `PAYDAY — VERIFIED EARNINGS STATEMENT`,
-      `Employee: ${me.firstName} ${me.lastName} (${me.role})`,
+      `Employee: ${displayFirst} ${displayLast} (${displayRole})`,
       `Employer: ${business.name}`,
       `Payslips on record: ${mine.length}`,
       `Total verified earnings: ${formatNaira(totalEarned)}`,
@@ -34,12 +42,13 @@ export default function ProfilePage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `earnings-statement-${me.lastName}.txt`;
+    link.download = `earnings-statement-${displayLast}.txt`;
     link.click();
     URL.revokeObjectURL(url);
   }
 
   function signOut() {
+    logoutUser();
     logoutStaff();
     router.replace("/portal/login");
   }
@@ -55,13 +64,13 @@ export default function ProfilePage() {
 
       <Card className="flex flex-col items-center p-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-100 text-lg font-semibold text-brand-700">
-          {initials(me.firstName, me.lastName)}
+          {initials(displayFirst, displayLast)}
         </div>
         <p className="mt-3 text-base font-semibold text-ink-900">
-          {me.firstName} {me.lastName}
+          {displayFirst} {displayLast}
         </p>
         <p className="text-sm text-ink-400">
-          {me.role} · {business.name}
+          {displayRole} · {business.name}
         </p>
       </Card>
 
@@ -86,10 +95,14 @@ export default function ProfilePage() {
       </Card>
 
       <Card className="divide-y divide-ink-100">
-        <Field label="Phone" value={me.phone || "—"} />
-        <Field label="Email" value={me.email ?? "—"} />
-        <Field label="Bank" value={me.bankName} />
-        <Field label="Account" value={`••••${me.accountNumber.slice(-4)}`} />
+        <Field label="Phone" value={me?.phone || authUser?.phone || "—"} />
+        <Field label="Email" value={me?.email ?? authUser?.email ?? "—"} />
+        {me ? (
+          <>
+            <Field label="Bank" value={me.bankName} />
+            <Field label="Account" value={`••••${me.accountNumber.slice(-4)}`} />
+          </>
+        ) : null}
       </Card>
 
       <Button variant="ghost" className="w-full" onClick={signOut}>

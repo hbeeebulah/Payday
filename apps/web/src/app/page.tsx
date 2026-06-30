@@ -8,16 +8,22 @@ export default function LandingPage() {
         <Logo />
         <nav className="flex items-center gap-3 text-sm font-medium">
           <Link
-            href="/portal"
+            href="/portal/login"
             className="rounded-lg px-3 py-2 text-ink-600 hover:text-ink-900"
           >
             Staff portal
           </Link>
           <Link
-            href="/dashboard"
+            href="/signup"
+            className="rounded-lg px-3 py-2 text-ink-600 hover:text-ink-900"
+          >
+            Sign up
+          </Link>
+          <Link
+            href="/login"
             className="rounded-lg bg-brand-600 px-4 py-2 text-white hover:bg-brand-700"
           >
-            Open dashboard
+            Sign in
           </Link>
         </nav>
       </header>

@@ -5,6 +5,13 @@ from __future__ import annotations
 import enum
 
 
+class UserRole(str, enum.Enum):
+    """Portal role selected at signup."""
+
+    STAFF = "staff"
+    EMPLOYER = "employer"
+
+
 class EmployeeStatus(str, enum.Enum):
     """Whether an employee is included in payroll runs."""
 

@@ -11,6 +11,21 @@ import type {
   TransactionReceipt,
 } from "./types";
 
+export interface RegisteredStaffUser {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  role: string;
+  created_at: string;
+}
+
+export interface StaffLookupResult {
+  found: boolean;
+  user: RegisteredStaffUser | null;
+}
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -53,4 +68,11 @@ export const api = {
       `/businesses/${businessId}/payroll-runs/${runId}/execute`,
       { method: "POST" },
     ),
+
+  lookupStaffByEmail: (email: string, authHeaders: Record<string, string>) =>
+    request<StaffLookupResult>("/auth/staff/lookup", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    }),
 };

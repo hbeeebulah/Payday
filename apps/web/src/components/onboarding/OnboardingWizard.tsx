@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Stepper } from "@/components/ui/Stepper";
+import { authHeaders } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { formatNaira } from "@/lib/format";
 import type { BusinessInfo, PayCycle, Wallet, Worker } from "@/lib/models";
 import { DEMO_WORKERS } from "@/lib/seed";
@@ -18,10 +20,12 @@ interface WorkerDraft {
   lastName: string;
   role: string;
   phone: string;
+  email: string;
   salary: string;
   bankName: string;
   bankCode: string;
   accountNumber: string;
+  fromSignup: boolean;
 }
 
 function emptyWorker(): WorkerDraft {
@@ -31,10 +35,12 @@ function emptyWorker(): WorkerDraft {
     lastName: "",
     role: "",
     phone: "",
+    email: "",
     salary: "",
     bankName: "",
     bankCode: "",
     accountNumber: "",
+    fromSignup: false,
   };
 }
 
@@ -55,6 +61,9 @@ export function OnboardingWizard() {
 
   const [workers, setWorkers] = useState<WorkerDraft[]>([emptyWorker()]);
   const [funding, setFunding] = useState("");
+  const [staffEmail, setStaffEmail] = useState("");
+  const [staffLookupError, setStaffLookupError] = useState<string | null>(null);
+  const [staffLookupLoading, setStaffLookupLoading] = useState(false);
 
   const totalPayroll = workers.reduce(
     (sum, w) => sum + (Number(w.salary) || 0),
@@ -77,6 +86,60 @@ export function OnboardingWizard() {
     setWorkers((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
   }
 
+  async function addStaffByEmail() {
+    const email = staffEmail.trim().toLowerCase();
+    if (!email) return;
+
+    setStaffLookupError(null);
+
+    if (workers.some((w) => w.email.toLowerCase() === email)) {
+      setStaffLookupError("This staff member is already on your team list.");
+      return;
+    }
+
+    setStaffLookupLoading(true);
+    try {
+      const result = await api.lookupStaffByEmail(email, authHeaders());
+      if (!result.found || !result.user) {
+        setStaffLookupError(
+          "No staff account found with this email. Ask them to sign up at the staff portal first.",
+        );
+        return;
+      }
+
+      const staff = result.user;
+      const draft: WorkerDraft = {
+        id: staff.id,
+        firstName: staff.first_name,
+        lastName: staff.last_name,
+        role: "Staff",
+        phone: staff.phone,
+        email: staff.email,
+        salary: "",
+        bankName: "",
+        bankCode: "035",
+        accountNumber: "",
+        fromSignup: true,
+      };
+
+      setWorkers((prev) => {
+        const onlyEmpty =
+          prev.length === 1 &&
+          !prev[0].firstName &&
+          !prev[0].lastName &&
+          !prev[0].email;
+        return onlyEmpty ? [draft] : [...prev, draft];
+      });
+      setStaffEmail("");
+    } catch (err) {
+      setStaffLookupError(
+        err instanceof Error ? err.message : "Could not look up staff account",
+      );
+    } finally {
+      setStaffLookupLoading(false);
+    }
+  }
+
   function loadDemoTeam() {
     setBusinessState((prev) => ({
       ...prev,
@@ -90,10 +153,12 @@ export function OnboardingWizard() {
         lastName: w.lastName,
         role: w.role,
         phone: w.phone,
+        email: w.email ?? "",
         salary: String(w.salary),
         bankName: w.bankName,
         bankCode: w.bankCode,
         accountNumber: w.accountNumber,
+        fromSignup: false,
       })),
     );
     setFunding("415000");
@@ -106,6 +171,7 @@ export function OnboardingWizard() {
       lastName: w.lastName,
       role: w.role || "Staff",
       phone: w.phone,
+      email: w.email || undefined,
       salary: Number(w.salary),
       bankName: w.bankName || "Wema Bank",
       bankCode: w.bankCode || "035",
@@ -198,10 +264,50 @@ export function OnboardingWizard() {
         ) : null}
 
         {step === 1 ? (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-4">
+              <p className="text-sm font-semibold text-ink-900">
+                Staff who have signed up
+              </p>
+              <p className="mt-1 text-xs text-ink-500">
+                Enter the email address a team member used to register on Payday.
+                Their name and phone will be filled in automatically.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="email"
+                  className={inputCls}
+                  placeholder="staff@example.com"
+                  value={staffEmail}
+                  onChange={(e) => {
+                    setStaffEmail(e.target.value);
+                    setStaffLookupError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void addStaffByEmail();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0"
+                  onClick={() => void addStaffByEmail()}
+                  disabled={staffLookupLoading || !staffEmail.trim()}
+                >
+                  {staffLookupLoading ? "Looking up…" : "Add staff"}
+                </Button>
+              </div>
+              {staffLookupError ? (
+                <p className="mt-2 text-xs text-rose-600">{staffLookupError}</p>
+              ) : null}
+            </div>
+
             <div className="flex items-center justify-between">
               <p className="text-sm text-ink-500">
-                Add each employee, their salary and payout account.
+                Add salary and payout details for each team member.
               </p>
               <Button size="sm" variant="secondary" onClick={loadDemoTeam}>
                 Load demo team
@@ -214,9 +320,16 @@ export function OnboardingWizard() {
                   className="rounded-lg border border-ink-200 p-4"
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="text-xs font-medium text-ink-400">
-                      Employee {i + 1}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-ink-400">
+                        Employee {i + 1}
+                      </span>
+                      {w.fromSignup ? (
+                        <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-brand-700">
+                          Signed up
+                        </span>
+                      ) : null}
+                    </div>
                     {workers.length > 1 ? (
                       <button
                         className="text-xs font-medium text-rose-600 hover:underline"
@@ -228,6 +341,11 @@ export function OnboardingWizard() {
                       </button>
                     ) : null}
                   </div>
+                  {w.email ? (
+                    <p className="mb-3 text-xs text-ink-500">
+                      Account email: <span className="font-medium text-ink-700">{w.email}</span>
+                    </p>
+                  ) : null}
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       className={inputCls}
@@ -236,6 +354,7 @@ export function OnboardingWizard() {
                       onChange={(e) =>
                         updateWorker(w.id, { firstName: e.target.value })
                       }
+                      readOnly={w.fromSignup}
                     />
                     <input
                       className={inputCls}
@@ -244,6 +363,7 @@ export function OnboardingWizard() {
                       onChange={(e) =>
                         updateWorker(w.id, { lastName: e.target.value })
                       }
+                      readOnly={w.fromSignup}
                     />
                     <input
                       className={inputCls}
@@ -253,6 +373,13 @@ export function OnboardingWizard() {
                     />
                     <input
                       className={inputCls}
+                      placeholder="Phone"
+                      value={w.phone}
+                      onChange={(e) => updateWorker(w.id, { phone: e.target.value })}
+                      readOnly={w.fromSignup}
+                    />
+                    <input
+                      className={`${inputCls} col-span-2`}
                       placeholder="Monthly salary (₦)"
                       inputMode="numeric"
                       value={w.salary}
@@ -290,7 +417,7 @@ export function OnboardingWizard() {
               size="sm"
               onClick={() => setWorkers((prev) => [...prev, emptyWorker()])}
             >
-              + Add another employee
+              + Add another employee manually
             </Button>
           </div>
         ) : null}

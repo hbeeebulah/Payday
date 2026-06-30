@@ -10,8 +10,10 @@ from app.models.enums import (
     DistributionState,
     EmployeeStatus,
     PayrollRunStatus,
+    UserRole,
     WalletStatus,
 )
+from app.models.user import User
 from app.models.payroll_run import PayrollRun
 from app.models.payroll_wallet import PayrollWallet
 from app.models.transaction_receipt import TransactionReceipt
@@ -22,8 +24,10 @@ __all__ = [
     "PayrollRun",
     "PayrollWallet",
     "TransactionReceipt",
+    "User",
     "DistributionState",
     "EmployeeStatus",
     "PayrollRunStatus",
+    "UserRole",
     "WalletStatus",
 ]

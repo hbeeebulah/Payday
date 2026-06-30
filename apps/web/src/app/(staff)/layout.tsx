@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { BottomNav } from "@/components/staff/BottomNav";
-import { useStore } from "@/lib/store";
+import { isAuthHydrated, useAuth } from "@/lib/auth";
 
 export default function StaffLayout({
   children,
@@ -12,17 +12,19 @@ export default function StaffLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { currentStaffId, hydrated } = useStore();
+  const auth = useAuth();
 
-  const isLogin = pathname === "/portal/login";
-  const needsAuth = !isLogin && !currentStaffId;
+  const isAuthPage =
+    pathname === "/portal/login" || pathname === "/portal/signup";
+  const ready = isAuthHydrated();
+  const authed = auth?.user.role === "staff";
+  const needsAuth = !isAuthPage && ready && !authed;
 
   useEffect(() => {
-    if (hydrated && needsAuth) router.replace("/portal/login");
-  }, [hydrated, needsAuth, router]);
+    if (ready && needsAuth) router.replace("/portal/login");
+  }, [ready, needsAuth, router]);
 
-  // Login screen: full mobile column, no bottom nav.
-  if (isLogin) {
+  if (isAuthPage) {
     return (
       <div className="min-h-screen bg-ink-100">
         <div className="mx-auto flex min-h-screen max-w-md flex-col bg-ink-50">

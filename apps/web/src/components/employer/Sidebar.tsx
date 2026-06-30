@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { logoutUser, useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 
 const NAV = [
@@ -14,7 +15,18 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const auth = useAuth();
   const { business } = useStore();
+
+  function signOut() {
+    logoutUser();
+    router.replace("/login");
+  }
+
+  const displayName = auth?.user
+    ? `${auth.user.firstName} ${auth.user.lastName}`
+    : business.name || "Payday";
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-ink-200 bg-white">
@@ -46,15 +58,20 @@ export function Sidebar() {
       <div className="border-t border-ink-200 p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-200 text-sm font-semibold text-ink-700">
-            {(business.name || "P").charAt(0)}
+            {displayName.charAt(0)}
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-ink-900">
-              {business.name || "Payday"}
-            </p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-ink-900">{displayName}</p>
             <p className="truncate text-xs text-ink-400">Employer account</p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={signOut}
+          className="mt-3 w-full rounded-lg px-3 py-2 text-left text-sm text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
   );

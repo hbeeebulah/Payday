@@ -20,5 +20,9 @@ httpx==0.28.1
 # Cryptography (Wema Merchant Payout AES/CBC payload encryption)
 cryptography==44.0.0
 
+# Auth
+bcrypt==4.2.1
+PyJWT==2.10.1
+
 # Utilities
 python-dotenv==1.0.1

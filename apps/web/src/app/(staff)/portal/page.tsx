@@ -3,15 +3,25 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useAuth } from "@/lib/auth";
 import { formatNaira, formatDate } from "@/lib/format";
 import { useStore } from "@/lib/store";
 
 export default function StaffHome() {
+  const auth = useAuth();
   const { workers, payslips, currentStaffId, business } = useStore();
   const me = workers.find((w) => w.id === currentStaffId);
-  if (!me) return null;
+  const authUser = auth?.user.role === "staff" ? auth.user : null;
 
-  const myPayslips = payslips.filter((p) => p.employeeId === me.id);
+  if (!me && !authUser) return null;
+
+  const displayName = me
+    ? `${me.firstName} ${me.lastName}`
+    : `${authUser!.firstName} ${authUser!.lastName}`;
+  const displayRole = me?.role ?? "Staff member";
+  const employeeId = me?.id ?? authUser!.id;
+
+  const myPayslips = payslips.filter((p) => p.employeeId === employeeId);
   const latest = myPayslips[0];
 
   return (
@@ -19,25 +29,27 @@ export default function StaffHome() {
       <header>
         <p className="text-sm text-ink-500">Welcome back,</p>
         <h1 className="text-xl font-semibold tracking-tight text-ink-900">
-          {me.firstName} {me.lastName}
+          {displayName}
         </h1>
         <p className="text-sm text-ink-400">
-          {me.role} · {business.name}
+          {displayRole} · {business.name}
         </p>
       </header>
 
-      <Card className="bg-brand-600 p-5 text-white">
-        <p className="text-sm text-brand-100">Monthly salary</p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
-          {formatNaira(me.salary)}
-        </p>
-        <div className="mt-4 flex items-center justify-between text-sm text-brand-100">
-          <span>Paid to</span>
-          <span className="font-medium text-white">
-            {me.bankName} ••••{me.accountNumber.slice(-4)}
-          </span>
-        </div>
-      </Card>
+      {me ? (
+        <Card className="bg-brand-600 p-5 text-white">
+          <p className="text-sm text-brand-100">Monthly salary</p>
+          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
+            {formatNaira(me.salary)}
+          </p>
+          <div className="mt-4 flex items-center justify-between text-sm text-brand-100">
+            <span>Paid to</span>
+            <span className="font-medium text-white">
+              {me.bankName} ••••{me.accountNumber.slice(-4)}
+            </span>
+          </div>
+        </Card>
+      ) : null}
 
       {latest ? (
         <Card className="p-5">

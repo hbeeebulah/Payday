@@ -7,9 +7,29 @@ so they can be cheaply injected into routes, services and the database layer.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
-from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BeforeValidator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def _parse_cors_origins(value: object) -> list[str]:
+    """Accept JSON arrays or comma-separated origin lists from .env."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(origin).strip() for origin in value if str(origin).strip()]
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("["):
+            import json
+
+            parsed = json.loads(stripped)
+            if not isinstance(parsed, list):
+                raise ValueError("backend_cors_origins must be a list")
+            return [str(origin).strip() for origin in parsed if str(origin).strip()]
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
+    raise ValueError("backend_cors_origins must be a string or list")
 
 
 class Settings(BaseSettings):
@@ -29,7 +49,19 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
 
     # --- CORS --------------------------------------------------------------
-    backend_cors_origins: list[str] = ["http://localhost:3000"]
+    # NoDecode: pydantic-settings otherwise JSON-parses list fields from .env
+    # before validators run, which breaks comma-separated values like
+    # BACKEND_CORS_ORIGINS=http://localhost:3000
+    backend_cors_origins: Annotated[
+        list[str],
+        NoDecode,
+        BeforeValidator(_parse_cors_origins),
+    ] = ["http://localhost:3000"]
+
+    # --- Auth --------------------------------------------------------------
+    jwt_secret_key: str = "change-me-in-production-use-a-long-random-string"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # --- Database ----------------------------------------------------------
     # Default to a local async SQLite file so the service boots with zero
@@ -70,14 +102,6 @@ class Settings(BaseSettings):
     # Display name shown to beneficiaries as the originator.
     payout_originator_name: str = "Payday"
     payout_timeout_seconds: float = 30.0
-
-    @field_validator("backend_cors_origins", mode="before")
-    @classmethod
-    def _split_cors(cls, value: object) -> object:
-        """Allow CORS origins to be provided as a comma separated string."""
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
 
     @property
     def is_production(self) -> bool:
